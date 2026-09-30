@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <title>Chipmunk Coin</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://unpkg.com/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js"></script>
 <style>
 :root{--bg:#0d0a06;--gold:#f5c542;--card:#1c150b;--txt:#fff4d6}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
@@ -34,6 +35,19 @@ button:disabled{opacity:.4}
   <button id="up2">🔋 الطاقة<br><small id="c2"></small></button>
 </div>
 <div class="row"><button id="bonus">🎁 مكافأة يومية</button></div>
+
+<div class="row" style="flex-direction:column;align-items:center">
+  <div id="ton-btn"></div>
+  <small id="wallet" style="margin-top:6px;color:var(--gold);word-break:break-all;text-align:center"></small>
+  <input id="addr" placeholder="أو الصق عنوان محفظة TON (UQ... / EQ...)" dir="ltr"
+    style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px solid #5a4116;background:#1c150b;color:#fff4d6;user-select:text">
+  <button id="saveAddr" style="margin-top:6px;width:100%">💾 حفظ العنوان</button>
+</div>
+
+<div class="row" style="flex-direction:column">
+  <button id="withdraw" style="width:100%">💸 سحب TON</button>
+  <small id="wInfo" style="text-align:center;margin-top:6px;opacity:.8"></small>
+</div>
 
 <script>
 const tg = window.Telegram && Telegram.WebApp;
@@ -74,6 +88,60 @@ $("coin").addEventListener("pointerdown", e => {
 $("up1").onclick = () => { if (s.coins >= cost1()) { s.coins -= cost1(); s.power++; render(); save(); } };
 $("up2").onclick = () => { if (s.coins >= cost2()) { s.coins -= cost2(); s.maxEn += 500; s.en = s.maxEn; render(); save(); } };
 $("bonus").onclick = () => { s.coins += 500; s.daily = Date.now(); render(); save(); };
+
+// ===== ربط محفظة Tonkeeper =====
+function showWallet() {
+  $("wallet").textContent = s.wallet ? "✅ المحفظة: " + s.wallet.slice(0, 6) + "..." + s.wallet.slice(-6) : "";
+}
+try {
+  const ui = new TON_CONNECT_UI.TonConnectUI({
+    manifestUrl: location.origin + location.pathname.replace(/[^/]*$/, "") + "tonconnect-manifest.json",
+    buttonRootId: "ton-btn"
+  });
+  ui.onStatusChange(w => {
+    if (w) { s.wallet = TON_CONNECT_UI.toUserFriendlyAddress(w.account.address); save(); showWallet(); }
+  });
+} catch (e) { console.log("TON Connect error", e); }
+
+$("saveAddr").onclick = () => {
+  const a = $("addr").value.trim();
+  if (!/^(UQ|EQ|kQ|0Q)[A-Za-z0-9_-]{46}$/.test(a)) { alert("عنوان غير صحيح. يجب أن يبدأ بـ UQ أو EQ ويكون 48 حرفاً."); return; }
+  s.wallet = a; save(); showWallet(); $("addr").value = "";
+};
+showWallet();
+
+// ===== السحب =====
+const WITHDRAW_API = "";          // ضع هنا رابط السيرفر (مثال: https://api.example.com/withdraw)
+const MIN_WITHDRAW = 10000;       // أقل مبلغ للسحب (بالعملات)
+const COINS_PER_TON = 100000;     // كل 100000 عملة = 1 TON
+
+function wInfo() {
+  $("wInfo").textContent = "الحد الأدنى " + MIN_WITHDRAW.toLocaleString() + " 🥜 | "
+    + COINS_PER_TON.toLocaleString() + " 🥜 = 1 TON"
+    + (s.pending ? " | ⏳ طلب قيد المراجعة: " + s.pending.ton + " TON" : "");
+  $("withdraw").disabled = !!s.pending;
+}
+$("withdraw").onclick = async () => {
+  if (!s.wallet) { alert("اربط محفظة Tonkeeper أو احفظ عنوانك أولاً."); return; }
+  if (s.coins < MIN_WITHDRAW) { alert("رصيدك أقل من الحد الأدنى للسحب."); return; }
+  const amount = s.coins;
+  const ton = +(amount / COINS_PER_TON).toFixed(4);
+  if (!confirm("سحب " + ton + " TON إلى:\n" + s.wallet + "\nسيتم خصم " + amount + " عملة.")) return;
+  const req = { wallet: s.wallet, coins: amount, ton,
+    user: tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null,
+    initData: tg ? tg.initData : "" };
+  try {
+    if (WITHDRAW_API) {
+      const r = await fetch(WITHDRAW_API, { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(req) });
+      if (!r.ok) throw new Error("server");
+    }
+    s.coins -= amount; s.pending = { ton, time: Date.now() };
+    render(); save(); wInfo();
+    alert("✅ تم إرسال طلب السحب وهو قيد المراجعة.");
+  } catch (e) { alert("تعذر إرسال الطلب، حاول لاحقاً."); }
+};
+wInfo();
 
 setInterval(() => { if (s.en < s.maxEn) { s.en++; render(); save(); } }, 1000);
 render();
