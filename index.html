@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Chipmunk Coin</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:#0d0a06;--gold:#f5c542;--card:#1c150b;--txt:#fff4d6}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(circle at 50% 30%,#3a2a0e,var(--bg) 70%);color:var(--txt);font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;padding:16px;overflow:hidden}
+h1{margin:4px 0;font-size:18px;color:var(--gold)}
+#coins{font-size:44px;font-weight:800;color:var(--gold);margin:8px 0}
+#coin{width:240px;height:240px;border-radius:50%;border:6px solid var(--gold);background:radial-gradient(circle,#6b4a16,#2b1d08);font-size:120px;display:flex;align-items:center;justify-content:center;transition:transform .07s;box-shadow:0 0 40px #f5c54255;margin:14px 0;cursor:pointer}
+#coin:active{transform:scale(.93)}
+.bar{width:100%;max-width:340px;height:14px;background:#3a2a0e;border-radius:8px;overflow:hidden}
+#fill{height:100%;background:var(--gold);width:100%;transition:width .15s}
+.row{display:flex;gap:10px;width:100%;max-width:340px;margin-top:14px}
+button{flex:1;padding:12px;border:0;border-radius:12px;background:var(--card);color:var(--txt);font-size:14px;border:1px solid #5a4116}
+button:disabled{opacity:.4}
+.plus{position:absolute;color:var(--gold);font-weight:800;font-size:26px;pointer-events:none;animation:up .8s forwards}
+@keyframes up{to{transform:translateY(-80px);opacity:0}}
+</style>
+</head>
+<body>
+<h1>🐿️ Chipmunk Coin</h1>
+<div id="coins">0</div>
+<div id="coin">🐿️</div>
+<div class="bar"><div id="fill"></div></div>
+<small id="en">⚡ 500/500</small>
+<div class="row">
+  <button id="up1">⬆️ قوة النقرة<br><small id="c1"></small></button>
+  <button id="up2">🔋 الطاقة<br><small id="c2"></small></button>
+</div>
+<div class="row"><button id="bonus">🎁 مكافأة يومية</button></div>
+
+<script>
+const tg = window.Telegram && Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+const KEY = "chipmunk_v1";
+let s = { coins: 0, power: 1, maxEn: 500, en: 500, last: Date.now(), daily: 0 };
+try { Object.assign(s, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) {}
+
+// استرجاع الطاقة أثناء الغياب (نقطة/ثانية)
+s.en = Math.min(s.maxEn, s.en + Math.floor((Date.now() - s.last) / 1000));
+
+const $ = id => document.getElementById(id);
+const cost1 = () => s.power * 100, cost2 = () => Math.ceil(s.maxEn / 500) * 200;
+
+function save() { s.last = Date.now(); try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
+function render() {
+  $("coins").textContent = s.coins.toLocaleString();
+  $("fill").style.width = (s.en / s.maxEn * 100) + "%";
+  $("en").textContent = "⚡ " + s.en + "/" + s.maxEn;
+  $("c1").textContent = cost1() + " 🥜 (المستوى " + s.power + ")";
+  $("c2").textContent = cost2() + " 🥜";
+  $("up1").disabled = s.coins < cost1();
+  $("up2").disabled = s.coins < cost2();
+  $("bonus").disabled = Date.now() - s.daily < 864e5;
+}
+
+$("coin").addEventListener("pointerdown", e => {
+  if (s.en < s.power) return;
+  s.en -= s.power; s.coins += s.power;
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
+  const p = document.createElement("div");
+  p.className = "plus"; p.textContent = "+" + s.power;
+  p.style.left = e.clientX - 10 + "px"; p.style.top = e.clientY - 30 + "px";
+  document.body.appendChild(p); setTimeout(() => p.remove(), 800);
+  render(); save();
+});
+$("up1").onclick = () => { if (s.coins >= cost1()) { s.coins -= cost1(); s.power++; render(); save(); } };
+$("up2").onclick = () => { if (s.coins >= cost2()) { s.coins -= cost2(); s.maxEn += 500; s.en = s.maxEn; render(); save(); } };
+$("bonus").onclick = () => { s.coins += 500; s.daily = Date.now(); render(); save(); };
+
+setInterval(() => { if (s.en < s.maxEn) { s.en++; render(); save(); } }, 1000);
+render();
+</script>
+</body>
+</html>
